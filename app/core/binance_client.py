@@ -7,6 +7,16 @@ from typing import Any
 from binance.client import Client
 
 
+
+
+@dataclass(slots=True)
+class BalanceSnapshot:
+    base_asset: str
+    base_free: float
+    quote_asset: str
+    quote_free: float
+    usdt_free: float
+
 @dataclass(slots=True)
 class FilterCheckResult:
     qty: float
@@ -76,6 +86,24 @@ class BinanceClient:
             side=Client.SIDE_SELL,
             type=Client.ORDER_TYPE_MARKET,
             quantity=f"{float(qty_q):.8f}",
+        )
+
+    def _get_symbol_assets(self) -> tuple[str, str]:
+        info = self._client.get_symbol_info(self._symbol)
+        if not info:
+            raise RuntimeError(f"Binance symbol not found: {self._symbol}")
+        return str(info.get("baseAsset", "BTC")), str(info.get("quoteAsset", "USDT"))
+
+    def get_balance_snapshot(self) -> BalanceSnapshot:
+        account = self._client.get_account()
+        balances = {item.get("asset"): float(item.get("free", 0.0)) for item in account.get("balances", [])}
+        base_asset, quote_asset = self._get_symbol_assets()
+        return BalanceSnapshot(
+            base_asset=base_asset,
+            base_free=balances.get(base_asset, 0.0),
+            quote_asset=quote_asset,
+            quote_free=balances.get(quote_asset, 0.0),
+            usdt_free=balances.get("USDT", 0.0),
         )
 
     def get_balances(self) -> dict[str, Any]:
