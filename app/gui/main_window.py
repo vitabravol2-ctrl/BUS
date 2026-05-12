@@ -29,8 +29,8 @@ from app.core.ws_client import WsClient
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BUS BTCU Spread Shooter v0.4.2")
-        self.resize(760, 920)
+        self.setWindowTitle("BUS v0.5.0 — FAST MICRO SCALPER")
+        self.resize(980, 760)
 
         self._logger = UiLogger()
         self._ws = WsClient()
@@ -136,16 +136,17 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(
             "QMainWindow { background-color: #0f1115; }"
             "QLabel, QGroupBox { color: #d7dbdf; }"
-            "QLineEdit { background-color: #161a22; color: #d7dbdf; border: 1px solid #2a2f39; }"
+            "QLineEdit { background-color: #161a22; color: #d7dbdf; border: 1px solid #2a2f39; padding:4px;}"
             "QTextEdit { background-color: #090b0f; color: #83f28f; border: 1px solid #2a2f39; }"
+            "QGroupBox { border:1px solid #2a2f39; margin-top:8px; padding:8px;}"
         )
 
-        for w in [self._status, self._metrics, self._bid, self._ask, self._spread, config_group, self._live_mode,
-                  self._live_status, self._live_entry, self._live_exit, self._live_pnl, self._real_session, self._live_balances,
-                  self._shooter_header, self._shooter_status, self._shooter_entry, self._shooter_live_bid,
-                  self._shooter_live_ask, self._shooter_exit_bid, self._shooter_pnl, self._shooter_hold,
-                  self._session, self._log_panel]:
-            layout.addWidget(w)
+        top = QHBoxLayout(); top.addWidget(self._status); top.addWidget(self._metrics); layout.addLayout(top)
+        market = QHBoxLayout(); market.addWidget(self._bid); market.addWidget(self._ask); market.addWidget(self._spread); layout.addLayout(market)
+        layout.addWidget(config_group)
+        trade = QHBoxLayout(); trade.addWidget(self._live_status); trade.addWidget(self._live_entry); trade.addWidget(self._live_exit); trade.addWidget(self._live_balances); trade.addWidget(self._live_pnl); layout.addLayout(trade)
+        layout.addWidget(self._real_session)
+        layout.addWidget(self._log_panel)
 
     def _connect_signals(self) -> None:
         self._ws.status.connect(self._on_status)
@@ -231,9 +232,7 @@ class MainWindow(QMainWindow):
         self._live_entry.setText(f"ENTRY\n{view.entry_price:.2f}" if view.entry_price is not None else "ENTRY\n-")
         self._live_exit.setText(f"EXIT\n{view.exit_price:.2f}" if view.exit_price is not None else "EXIT\n-")
         self._live_pnl.setText(f"REAL PNL\n{view.pnl_u:+.2f} U | {view.pnl_ticks:+.0f} ticks")
-        self._live_balances.setText(
-            f"LIVE BALANCES\n{view.base_asset} free: {view.base_free:.8f}\n{view.quote_asset} free: {view.quote_free:.8f}\nUSDT free: {view.usdt_free:.8f}"
-        )
+        self._live_balances.setText(f"BUY AGE\n{view.buy_age_ms} ms\nSELL AGE\n{view.sell_age_ms} ms")
         self._real_session.setText(
             f"REAL TRADES: {view.real_trades} | REAL WINS: {view.real_wins} | REAL LOSSES: {view.real_losses} | "
             f"REAL WINRATE: {view.real_winrate:.1f}% | REAL TOTAL PNL U: {view.real_total_pnl_u:+.2f} | "

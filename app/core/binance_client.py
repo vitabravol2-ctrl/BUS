@@ -88,6 +88,20 @@ class BinanceClient:
             quantity=f"{float(qty_q):.8f}",
         )
 
+
+    def place_limit_sell_near_top(self, qty: float, best_ask: float) -> dict[str, Any]:
+        qty_q = self._floor_to_step(Decimal(str(qty)), self._step_size)
+        if qty_q <= 0:
+            raise RuntimeError("Sell quantity is zero after LOT_SIZE quantization")
+        price_d = self._floor_to_step(Decimal(str(best_ask)) - (self._tick_size * Decimal("30")), self._tick_size)
+        return self._client.create_order(
+            symbol=self._symbol,
+            side=Client.SIDE_SELL,
+            type=Client.ORDER_TYPE_LIMIT,
+            timeInForce=Client.TIME_IN_FORCE_GTC,
+            quantity=f"{float(qty_q):.8f}",
+            price=f"{float(price_d):.2f}",
+        )
     def _get_symbol_assets(self) -> tuple[str, str]:
         info = self._client.get_symbol_info(self._symbol)
         if not info:
