@@ -29,7 +29,7 @@ from app.core.ws_client import WsClient
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BUS BTCU Spread Shooter v0.4.1")
+        self.setWindowTitle("BUS BTCU Spread Shooter v0.4.2")
         self.resize(760, 920)
 
         self._logger = UiLogger()
@@ -49,6 +49,7 @@ class MainWindow(QMainWindow):
         self._live_exit = QLabel("EXIT\n-")
         self._live_pnl = QLabel("REAL PNL\n0.00 U | +0 ticks")
         self._real_session = QLabel("REAL TRADES: 0 | REAL WINS: 0 | REAL LOSSES: 0 | REAL WINRATE: 0.0% | REAL TOTAL PNL U: 0.00 | REAL AVG PNL: 0.00")
+        self._live_balances = QLabel("LIVE BALANCES\nBTC free: -\nU free: -\nUSDT free: -")
 
         self._shooter_header = QLabel("SIM SHOOTER")
         self._shooter_status = QLabel("STATUS\nIDLE")
@@ -66,6 +67,7 @@ class MainWindow(QMainWindow):
         self._save_btn = QPushButton("SAVE KEYS")
         self._start_btn = QPushButton("START LIVE")
         self._stop_btn = QPushButton("STOP LIVE")
+        self._refresh_balance_btn = QPushButton("REFRESH BALANCE")
         self._settings_path = Path("config/live_settings.json")
 
         self._log_panel = QTextEdit()
@@ -106,6 +108,7 @@ class MainWindow(QMainWindow):
         self._live_exit.setFont(font_small)
         self._live_pnl.setFont(font_small)
         self._real_session.setFont(font_small)
+        self._live_balances.setFont(font_small)
         self._shooter_header.setFont(font_mid)
         self._shooter_status.setFont(font_mid)
         self._shooter_entry.setFont(font_small)
@@ -127,6 +130,7 @@ class MainWindow(QMainWindow):
         row.addWidget(self._save_btn)
         row.addWidget(self._start_btn)
         row.addWidget(self._stop_btn)
+        row.addWidget(self._refresh_balance_btn)
         form.addRow("", row)
 
         self.setStyleSheet(
@@ -137,7 +141,7 @@ class MainWindow(QMainWindow):
         )
 
         for w in [self._status, self._metrics, self._bid, self._ask, self._spread, config_group, self._live_mode,
-                  self._live_status, self._live_entry, self._live_exit, self._live_pnl, self._real_session,
+                  self._live_status, self._live_entry, self._live_exit, self._live_pnl, self._real_session, self._live_balances,
                   self._shooter_header, self._shooter_status, self._shooter_entry, self._shooter_live_bid,
                   self._shooter_live_ask, self._shooter_exit_bid, self._shooter_pnl, self._shooter_hold,
                   self._session, self._log_panel]:
@@ -150,6 +154,7 @@ class MainWindow(QMainWindow):
         self._save_btn.clicked.connect(self._save_settings)
         self._start_btn.clicked.connect(self._start_live)
         self._stop_btn.clicked.connect(self._stop_live)
+        self._refresh_balance_btn.clicked.connect(self._refresh_balance)
         self._api_key.editingFinished.connect(self._apply_live_config)
         self._api_secret.editingFinished.connect(self._apply_live_config)
         self._order_size_u.editingFinished.connect(self._apply_live_config)
@@ -197,6 +202,10 @@ class MainWindow(QMainWindow):
     def _stop_live(self) -> None:
         self._live.stop_live(self._logger.log)
 
+    def _refresh_balance(self) -> None:
+        self._live.refresh_balances(self._logger.log)
+        self._render_live(self._live.view())
+
     def _on_status(self, status: str) -> None:
         self._status.setText(f"WS STATUS: {status}")
         self._logger.log(status)
@@ -222,6 +231,9 @@ class MainWindow(QMainWindow):
         self._live_entry.setText(f"ENTRY\n{view.entry_price:.2f}" if view.entry_price is not None else "ENTRY\n-")
         self._live_exit.setText(f"EXIT\n{view.exit_price:.2f}" if view.exit_price is not None else "EXIT\n-")
         self._live_pnl.setText(f"REAL PNL\n{view.pnl_u:+.2f} U | {view.pnl_ticks:+.0f} ticks")
+        self._live_balances.setText(
+            f"LIVE BALANCES\n{view.base_asset} free: {view.base_free:.8f}\n{view.quote_asset} free: {view.quote_free:.8f}\nUSDT free: {view.usdt_free:.8f}"
+        )
         self._real_session.setText(
             f"REAL TRADES: {view.real_trades} | REAL WINS: {view.real_wins} | REAL LOSSES: {view.real_losses} | "
             f"REAL WINRATE: {view.real_winrate:.1f}% | REAL TOTAL PNL U: {view.real_total_pnl_u:+.2f} | "

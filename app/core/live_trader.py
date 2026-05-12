@@ -19,6 +19,7 @@ class LiveStatus(str, Enum):
     SELLING = "SELLING"
     WIN = "WIN"
     LOSS = "LOSS"
+    BALANCE_LOW = "BALANCE_LOW"
     ERROR = "ERROR"
 
 
@@ -44,6 +45,11 @@ class LiveView:
     real_winrate: float
     real_total_pnl_u: float
     real_avg_pnl_u: float
+    base_asset: str
+    base_free: float
+    quote_asset: str
+    quote_free: float
+    usdt_free: float
 
 
 class LiveTrader:
@@ -63,6 +69,11 @@ class LiveTrader:
         self._real_wins = 0
         self._real_losses = 0
         self._real_total_pnl_u = 0.0
+        self._base_asset = "BTC"
+        self._base_free = 0.0
+        self._quote_asset = "U"
+        self._quote_free = 0.0
+        self._usdt_free = 0.0
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-binance")
         self._future: Optional[Future] = None
         self._poll_future: Optional[Future] = None
@@ -75,10 +86,11 @@ class LiveTrader:
             log_fn("error: API key/secret missing")
             self._status = LiveStatus.ERROR
             return False
-        self._client = BinanceClient(self._config.api_key, self._config.api_secret)
+        self._client = BinanceClient(self._config.api_key, self._config.api_secret, symbol="BTCU")
         self._config.live_enabled = True
         self._status = LiveStatus.READY
         log_fn("live started")
+        self.refresh_balances(log_fn)
         return True
 
     def stop_live(self, log_fn) -> None:
@@ -91,12 +103,30 @@ class LiveTrader:
         self._status = LiveStatus.IDLE
         log_fn("live stopped")
 
+    def refresh_balances(self, log_fn) -> None:
+        if not self._client:
+            return
+        snap = self._client.get_balance_snapshot()
+        self._base_asset = snap.base_asset
+        self._base_free = snap.base_free
+        self._quote_asset = snap.quote_asset
+        self._quote_free = snap.quote_free
+        self._usdt_free = snap.usdt_free
+        log_fn(f"[ACCOUNT] base={self._base_asset} free={self._base_free:.8f}")
+        log_fn(f"[ACCOUNT] quote={self._quote_asset} free={self._quote_free:.8f}")
+
     def on_snapshot(self, snapshot: MarketSnapshot, log_fn) -> LiveView:
         self._resolve_futures(log_fn)
         if not self._config.live_enabled or not self._client:
             return self.view()
 
-        if self._status == LiveStatus.READY and not self._future and snapshot.spread_ticks >= self._min_spread_ticks:
+        if self._status in {LiveStatus.READY, LiveStatus.BALANCE_LOW} and not self._future and snapshot.spread_ticks >= self._min_spread_ticks:
+            self.refresh_balances(log_fn)
+            required_quote = self._config.order_size_u * 1.01
+            if self._quote_free < required_quote:
+                self._status = LiveStatus.BALANCE_LOW
+                log_fn(f"[BALANCE_LOW] need={required_quote:.8f} {self._quote_asset} free={self._quote_free:.8f}")
+                return self.view()
             spread_u = snapshot.ask - snapshot.bid
             raw_entry = snapshot.bid + spread_u * self._entry_spread_ratio
             check = self._client.prepare_limit_buy(raw_entry, self._config.order_size_u)
@@ -124,13 +154,16 @@ class LiveTrader:
                 elif isinstance(result, dict) and result.get("status") == "FILLED":
                     self._handle_filled_order(result, log_fn)
             except BinanceAPIException as exc:
+                if "insufficient balance" in str(exc).lower() or "insufficient balance" in getattr(exc, "message", "").lower():
+                    self._status = LiveStatus.BALANCE_LOW
+                    log_fn(f"[BALANCE_LOW] {getattr(exc, 'message', str(exc))}")
+                    self._order_id = None
+                    continue
                 log_fn(f"error: {exc.message}")
                 self._status = LiveStatus.ERROR
-                self._config.live_enabled = False
             except Exception as exc:
                 log_fn(f"error: {exc}")
                 self._status = LiveStatus.ERROR
-                self._config.live_enabled = False
 
     def _handle_filled_order(self, order: dict, log_fn) -> None:
         self._status = LiveStatus.FILLED
@@ -173,4 +206,9 @@ class LiveTrader:
             real_winrate=winrate,
             real_total_pnl_u=self._real_total_pnl_u,
             real_avg_pnl_u=avg,
+            base_asset=self._base_asset,
+            base_free=self._base_free,
+            quote_asset=self._quote_asset,
+            quote_free=self._quote_free,
+            usdt_free=self._usdt_free,
         )
