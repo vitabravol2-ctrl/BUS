@@ -13,7 +13,7 @@ from app.core.ws_client import WsClient
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BUS BTCU Spread Shooter v0.2.1")
+        self.setWindowTitle("BUS BTCU Spread Shooter v0.3.0")
         self.resize(700, 760)
 
         self._logger = UiLogger()
@@ -30,9 +30,11 @@ class MainWindow(QMainWindow):
         self._shooter_status = QLabel("STATUS\nIDLE")
         self._shooter_entry = QLabel("ENTRY\n-")
         self._shooter_live_bid = QLabel("LIVE BID\n-")
+        self._shooter_live_ask = QLabel("LIVE ASK\n-")
+        self._shooter_exit_bid = QLabel("EXIT BID\n-")
         self._shooter_pnl = QLabel("PNL\n0 ticks")
         self._shooter_hold = QLabel("HOLD\n0 ms")
-        self._session = QLabel("TRADES: 0 | WINS: 0 | LOSSES: 0 | WINRATE: 0.0% | AVG HOLD: 0.0 ms | AVG PNL: 0.0 ticks")
+        self._session = QLabel("TRADES: 0 | WINS: 0 | LOSSES: 0 | WINRATE: 0.0% | AVG PNL: 0.0 ticks")
 
         self._log_panel = QTextEdit()
         self._log_panel.setReadOnly(True)
@@ -68,6 +70,8 @@ class MainWindow(QMainWindow):
         self._shooter_status.setFont(font_mid)
         self._shooter_entry.setFont(font_small)
         self._shooter_live_bid.setFont(font_small)
+        self._shooter_live_ask.setFont(font_small)
+        self._shooter_exit_bid.setFont(font_small)
         self._shooter_pnl.setFont(font_small)
         self._shooter_hold.setFont(font_small)
         self._session.setFont(font_small)
@@ -89,6 +93,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._shooter_status)
         layout.addWidget(self._shooter_entry)
         layout.addWidget(self._shooter_live_bid)
+        layout.addWidget(self._shooter_live_ask)
+        layout.addWidget(self._shooter_exit_bid)
         layout.addWidget(self._shooter_pnl)
         layout.addWidget(self._shooter_hold)
         layout.addWidget(self._session)
@@ -120,19 +126,21 @@ class MainWindow(QMainWindow):
         self._shooter_status.setText(f"STATUS\n{view.status.value}")
         self._shooter_entry.setText(f"ENTRY\n{view.entry_price:.2f}" if view.entry_price is not None else "ENTRY\n-")
         self._shooter_live_bid.setText(f"LIVE BID\n{view.live_bid:.2f}" if view.live_bid is not None else "LIVE BID\n-")
+        self._shooter_live_ask.setText(f"LIVE ASK\n{view.live_ask:.2f}" if view.live_ask is not None else "LIVE ASK\n-")
+        self._shooter_exit_bid.setText(f"EXIT BID\n{view.exit_bid:.2f}" if view.exit_bid is not None else "EXIT BID\n-")
         self._shooter_pnl.setText(f"PNL\n{view.pnl_ticks:+.1f} ticks")
         self._shooter_hold.setText(f"HOLD\n{view.hold_ms} ms")
         self._session.setText(
             f"TRADES: {view.trades} | WINS: {view.wins} | LOSSES: {view.losses} | "
-            f"WINRATE: {view.winrate:.1f}% | AVG HOLD: {view.avg_hold_ms:.1f} ms | AVG PNL: {view.avg_pnl_ticks:+.1f} ticks"
+            f"WINRATE: {view.winrate:.1f}% | AVG PNL: {view.avg_pnl_ticks:+.1f} ticks"
         )
 
         color = "#d7dbdf"
-        if view.status == ShooterStatus.TRACKING:
+        if view.status == ShooterStatus.WAIT_FILL:
             color = "#f5d742"
         elif view.status == ShooterStatus.WIN:
             color = "#4cef72"
-        elif view.status == ShooterStatus.LOSS:
+        elif view.status in {ShooterStatus.LOSS, ShooterStatus.TIMEOUT}:
             color = "#ff5f6d"
         self._shooter_status.setStyleSheet(f"color: {color};")
         self._shooter_pnl.setStyleSheet(f"color: {color};")
