@@ -12,7 +12,7 @@ from ws_client import SymbolMeta, WsClient
 class App:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("BUS v0.1.1 — Symbol Validation")
+        self.root.title("BUS v0.1.4 — FIX BTC_U SYMBOL")
         self.root.configure(bg="#111")
         self.root.geometry("860x760")
 
@@ -21,7 +21,7 @@ class App:
         self.ws = WsClient(self.on_ticker, self.on_status, self.on_symbol_meta)
         self.ws_stale_threshold_ms = 2500
 
-        self.vars = {k: tk.StringVar(value="-") for k in ["bid", "ask", "spread", "impulse", "position", "entry", "pnl", "hold", "shots", "wins", "losses", "wr", "avg", "ws_health", "symbol", "last_update", "book_age", "spread_ticks"]}
+        self.vars = {k: tk.StringVar(value="-") for k in ["bid", "ask", "spread", "impulse", "position", "entry", "pnl", "hold", "shots", "wins", "losses", "wr", "avg", "ws_health", "symbol", "stream", "last_update", "book_age", "spread_ticks"]}
         self._build()
         self._refresh()
 
@@ -41,7 +41,7 @@ class App:
 
         tk.Label(self.root, text="symbol", fg="#bbb", bg="#111").grid(row=row, column=0, sticky="w", padx=8)
         self.symbol_entry = tk.Entry(self.root, width=16, bg="#222", fg="#eee", insertbackground="#eee")
-        self.symbol_entry.insert(0, "BTCUUSDT")
+        self.symbol_entry.insert(0, "BTCU")
         self.symbol_entry.grid(row=row, column=1, sticky="w")
         row += 1
 
@@ -59,7 +59,7 @@ class App:
         tk.Button(self.root, text="PANIC EXIT", command=self.panic, bg="#602020", fg="#fff").grid(row=10, column=3, padx=4)
 
         tk.Label(self.root, text="DEBUG", fg="#ffd", bg="#111", font=("Consolas", 12, "bold")).grid(row=18, column=0, sticky="w", padx=8, pady=(8, 0))
-        debug_rows = [("SYMBOL", "symbol"), ("LAST UPDATE", "last_update"), ("BOOK AGE", "book_age"), ("SPREAD TICKS", "spread_ticks"), ("WS HEALTH", "ws_health")]
+        debug_rows = [("SYMBOL", "symbol"), ("STREAM", "stream"), ("LAST UPDATE", "last_update"), ("BOOK AGE", "book_age"), ("SPREAD TICKS", "spread_ticks"), ("WS HEALTH", "ws_health")]
         for idx, (title, key) in enumerate(debug_rows, start=19):
             tk.Label(self.root, text=title, fg="#bbb", bg="#111", font=("Consolas", 11, "bold")).grid(row=idx, column=0, sticky="w", padx=8)
             tk.Label(self.root, textvariable=self.vars[key], fg="#9f9", bg="#111", font=("Consolas", 11, "bold")).grid(row=idx, column=1, sticky="w")
@@ -93,6 +93,7 @@ class App:
 
     def on_symbol_meta(self, meta: SymbolMeta) -> None:
         self.vars["symbol"].set(meta.symbol)
+        self.vars["stream"].set(f"{meta.symbol.lower()}@bookTicker")
         if meta.tick_size > 0:
             self.shooter.cfg.tick_size = meta.tick_size
 
