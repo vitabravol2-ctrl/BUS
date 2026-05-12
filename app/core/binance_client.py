@@ -89,11 +89,11 @@ class BinanceClient:
         )
 
 
-    def place_limit_sell_near_top(self, qty: float, best_ask: float) -> dict[str, Any]:
+    def place_limit_sell_near_top(self, qty: float, best_bid: float) -> dict[str, Any]:
         qty_q = self._floor_to_step(Decimal(str(qty)), self._step_size)
         if qty_q <= 0:
             raise RuntimeError("Sell quantity is zero after LOT_SIZE quantization")
-        price_d = self._floor_to_step(Decimal(str(best_ask)) - (self._tick_size * Decimal("30")), self._tick_size)
+        price_d = self._floor_to_step(Decimal(str(best_bid)) + (self._tick_size * Decimal("20")), self._tick_size)
         return self._client.create_order(
             symbol=self._symbol,
             side=Client.SIDE_SELL,
