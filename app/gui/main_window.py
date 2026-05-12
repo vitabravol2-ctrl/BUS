@@ -29,7 +29,7 @@ from app.core.ws_client import WsClient
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BUS v0.5.0 — FAST MICRO SCALPER")
+        self.setWindowTitle("BUS v0.5.1 — LIGHTNING MICRO FLOW")
         self.resize(980, 760)
 
         self._logger = UiLogger()
@@ -138,15 +138,28 @@ class MainWindow(QMainWindow):
             "QLabel, QGroupBox { color: #d7dbdf; }"
             "QLineEdit { background-color: #161a22; color: #d7dbdf; border: 1px solid #2a2f39; padding:4px;}"
             "QTextEdit { background-color: #090b0f; color: #83f28f; border: 1px solid #2a2f39; }"
-            "QGroupBox { border:1px solid #2a2f39; margin-top:8px; padding:8px;}"
+            "QGroupBox { border:1px solid #353b47; border-radius:12px; margin-top:8px; padding:10px; background-color:#151a23;}"
         )
 
-        top = QHBoxLayout(); top.addWidget(self._status); top.addWidget(self._metrics); layout.addLayout(top)
-        market = QHBoxLayout(); market.addWidget(self._bid); market.addWidget(self._ask); market.addWidget(self._spread); layout.addLayout(market)
-        layout.addWidget(config_group)
-        trade = QHBoxLayout(); trade.addWidget(self._live_status); trade.addWidget(self._live_entry); trade.addWidget(self._live_exit); trade.addWidget(self._live_balances); trade.addWidget(self._live_pnl); layout.addLayout(trade)
-        layout.addWidget(self._real_session)
-        layout.addWidget(self._log_panel)
+        top_card = QGroupBox("TOP STATUS")
+        top_l = QHBoxLayout(top_card); top_l.addWidget(self._status); top_l.addWidget(self._metrics)
+        layout.addWidget(top_card)
+
+        market_card = QGroupBox("MARKET")
+        market = QHBoxLayout(market_card); market.addWidget(self._bid); market.addWidget(self._ask); market.addWidget(self._spread)
+        layout.addWidget(market_card)
+
+        live_card = QGroupBox("LIVE")
+        trade = QHBoxLayout(live_card); trade.addWidget(self._live_status); trade.addWidget(self._live_entry); trade.addWidget(self._live_exit); trade.addWidget(self._live_balances); trade.addWidget(self._live_pnl)
+        layout.addWidget(live_card)
+
+        session_card = QGroupBox("SESSION")
+        session_l = QVBoxLayout(session_card); session_l.addWidget(self._real_session); session_l.addWidget(config_group)
+        layout.addWidget(session_card)
+
+        log_card = QGroupBox("LOG")
+        log_l = QVBoxLayout(log_card); log_l.addWidget(self._log_panel)
+        layout.addWidget(log_card)
 
     def _connect_signals(self) -> None:
         self._ws.status.connect(self._on_status)
