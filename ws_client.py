@@ -47,7 +47,7 @@ class WsClient:
         self.on_symbol_meta = on_symbol_meta
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
-        self.symbol = "BTCUUSDT"
+        self.symbol = "BTCU"
 
     def connect(self, symbol: str) -> None:
         if self._thread and self._thread.is_alive():
@@ -66,13 +66,21 @@ class WsClient:
     def _validate_symbol(self, symbol: str) -> Optional[SymbolMeta]:
         query = urllib.parse.urlencode({"symbol": symbol})
         url = f"{EXCHANGE_INFO_URL}?{query}"
+        self.on_status(f"[CONNECT] exchangeInfo(symbol={symbol})")
         try:
             with urllib.request.urlopen(url, timeout=10) as response:
                 payload = json.load(response)
         except urllib.error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="replace")
+            self.on_status(
+                f"[API ERROR] exchangeInfo status={exc.code} symbol={symbol} response={raw}"
+            )
             if exc.code == 400:
                 self.on_status(f"INVALID SYMBOL: {symbol}")
                 return None
+            raise
+        except Exception as exc:
+            self.on_status(f"[API ERROR] exchangeInfo symbol={symbol} error={exc}")
             raise
 
         symbols = payload.get("symbols", [])
@@ -94,6 +102,7 @@ class WsClient:
             elif ftype in ("MIN_NOTIONAL", "NOTIONAL"):
                 min_notional = float(f.get("minNotional", 0.0))
 
+        self.on_status(f"[FILTERS] loaded symbol={info['symbol']}")
         self.on_status(
             "[FILTERS] "
             f"symbol={info['symbol']} tickSize={tick_size} stepSize={step_size} "
@@ -112,7 +121,7 @@ class WsClient:
         return meta
 
     async def _run_async(self) -> None:
-        self.on_status("WS connecting...")
+        self.on_status("[CONNECT] start")
         try:
             meta = self._validate_symbol(self.symbol)
             if not meta:
@@ -120,9 +129,9 @@ class WsClient:
 
             stream = f"{meta.symbol.lower()}@bookTicker"
             ws_url = f"wss://stream.binance.com:9443/ws/{stream}"
-            self.on_status(f"WS stream: {stream}")
+            self.on_status(f"[WS] connecting stream={stream}")
             async with websockets.connect(ws_url, ping_interval=10, ping_timeout=10) as ws:
-                self.on_status("WS connected")
+                self.on_status(f"[WS] connected stream={stream}")
                 while not self._stop.is_set():
                     raw = await asyncio.wait_for(ws.recv(), timeout=1.0)
                     recv_ms = int(time.time() * 1000)
@@ -137,10 +146,12 @@ class WsClient:
                         recv_time_ms=recv_ms,
                     )
                     spread = tick.ask - tick.bid
+                    spread_ticks = spread / meta.tick_size if meta.tick_size else 0.0
                     age = recv_ms - tick.event_time_ms
-                    self.on_status(
-                        f"BOOK UPDATE bid={tick.bid:.8f} ask={tick.ask:.8f} spread={spread:.8f} age_ms={age}"
-                    )
+                    self.on_status(f"[MARKET] bid={tick.bid:.8f}")
+                    self.on_status(f"[MARKET] ask={tick.ask:.8f}")
+                    self.on_status(f"[MARKET] spread_ticks={spread_ticks:.2f}")
+                    self.on_status(f"[MARKET] age_ms={age}")
                     self.on_ticker(tick)
         except Exception as exc:
             self.on_status(f"WS error: {exc}")
