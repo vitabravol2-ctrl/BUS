@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+import json
+
 from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QPushButton, QHBoxLayout
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QCheckBox,
     QFormLayout,
     QGroupBox,
     QLabel,
@@ -11,6 +14,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QTextEdit,
     QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
     QWidget,
 )
 
@@ -24,7 +29,7 @@ from app.core.ws_client import WsClient
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BUS BTCU Spread Shooter v0.4.0")
+        self.setWindowTitle("BUS BTCU Spread Shooter v0.4.1")
         self.resize(760, 920)
 
         self._logger = UiLogger()
@@ -57,14 +62,18 @@ class MainWindow(QMainWindow):
 
         self._api_key = QLineEdit()
         self._api_secret = QLineEdit()
-        self._order_size_u = QLineEdit("10")
-        self._live_enable = QCheckBox("LIVE ENABLE")
+        self._order_size_u = QLineEdit("15")
+        self._save_btn = QPushButton("SAVE KEYS")
+        self._start_btn = QPushButton("START LIVE")
+        self._stop_btn = QPushButton("STOP LIVE")
+        self._settings_path = Path("config/live_settings.json")
 
         self._log_panel = QTextEdit()
         self._log_panel.setReadOnly(True)
 
         self._setup_ui()
         self._connect_signals()
+        self._load_settings()
         self._apply_live_config()
 
         self._render_timer = QTimer(self)
@@ -114,7 +123,11 @@ class MainWindow(QMainWindow):
         form.addRow("API KEY", self._api_key)
         form.addRow("API SECRET", self._api_secret)
         form.addRow("ORDER SIZE U", self._order_size_u)
-        form.addRow("", self._live_enable)
+        row = QHBoxLayout()
+        row.addWidget(self._save_btn)
+        row.addWidget(self._start_btn)
+        row.addWidget(self._stop_btn)
+        form.addRow("", row)
 
         self.setStyleSheet(
             "QMainWindow { background-color: #0f1115; }"
@@ -134,7 +147,9 @@ class MainWindow(QMainWindow):
         self._ws.status.connect(self._on_status)
         self._ws.market.connect(self._on_market)
         self._ws.metrics.connect(self._on_metrics)
-        self._live_enable.toggled.connect(self._apply_live_config)
+        self._save_btn.clicked.connect(self._save_settings)
+        self._start_btn.clicked.connect(self._start_live)
+        self._stop_btn.clicked.connect(self._stop_live)
         self._api_key.editingFinished.connect(self._apply_live_config)
         self._api_secret.editingFinished.connect(self._apply_live_config)
         self._order_size_u.editingFinished.connect(self._apply_live_config)
@@ -149,9 +164,38 @@ class MainWindow(QMainWindow):
             api_key=self._api_key.text().strip(),
             api_secret=self._api_secret.text().strip(),
             order_size_u=order_size_u,
-            live_enabled=self._live_enable.isChecked(),
+            live_enabled=self._live.view().live_mode == "ON",
         )
         self._live.apply_config(cfg)
+
+
+    def _load_settings(self) -> None:
+        self._settings_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self._settings_path.exists():
+            return
+        data = json.loads(self._settings_path.read_text())
+        self._api_key.setText(str(data.get("api_key", "")))
+        self._api_secret.setText(str(data.get("api_secret", "")))
+        self._order_size_u.setText(str(data.get("order_size_u", 15.0)))
+        self._logger.log("settings loaded")
+
+    def _save_settings(self) -> None:
+        self._apply_live_config()
+        cfg = self._live._config
+        data = {"api_key": cfg.api_key, "api_secret": cfg.api_secret, "order_size_u": cfg.order_size_u, "live_enabled": False}
+        self._settings_path.parent.mkdir(parents=True, exist_ok=True)
+        self._settings_path.write_text(json.dumps(data, indent=2))
+        self._logger.log("settings saved")
+
+    def _start_live(self) -> None:
+        self._apply_live_config()
+        self._save_settings()
+        started = self._live.start_live(self._logger.log)
+        if started:
+            self._logger.log("filters loaded")
+
+    def _stop_live(self) -> None:
+        self._live.stop_live(self._logger.log)
 
     def _on_status(self, status: str) -> None:
         self._status.setText(f"WS STATUS: {status}")

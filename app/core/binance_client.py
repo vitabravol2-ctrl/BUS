@@ -1,56 +1,74 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
 from typing import Any
 
 from binance.client import Client
 
 
+@dataclass(slots=True)
+class FilterCheckResult:
+    qty: float
+    price: float
+    error: str = ""
+
+
 class BinanceClient:
     def __init__(self, api_key: str, api_secret: str, symbol: str = "BTCUSDT") -> None:
         self._client = Client(api_key, api_secret)
         self._symbol = symbol
-        self._step_size = self._load_step_size()
+        self._step_size = Decimal("0.000001")
+        self._min_qty = Decimal("0")
+        self._min_notional = Decimal("0")
+        self._tick_size = Decimal("0.01")
+        self.load_filters()
 
-    @property
-    def symbol(self) -> str:
-        return self._symbol
-
-    def _load_step_size(self) -> Decimal:
+    def load_filters(self) -> None:
         info = self._client.get_symbol_info(self._symbol)
         if not info:
             raise RuntimeError(f"Binance symbol not found: {self._symbol}")
         for flt in info.get("filters", []):
-            if flt.get("filterType") == "LOT_SIZE":
-                return Decimal(flt["stepSize"])
-        raise RuntimeError("LOT_SIZE filter missing")
+            f_type = flt.get("filterType")
+            if f_type == "LOT_SIZE":
+                self._step_size = Decimal(flt["stepSize"])
+                self._min_qty = Decimal(flt["minQty"])
+            elif f_type in {"MIN_NOTIONAL", "NOTIONAL"}:
+                self._min_notional = Decimal(flt.get("minNotional", flt.get("notional", "0")))
+            elif f_type == "PRICE_FILTER":
+                self._tick_size = Decimal(flt["tickSize"])
 
-    def _quantize_qty(self, qty: Decimal) -> Decimal:
-        return qty.quantize(self._step_size, rounding=ROUND_DOWN)
+    def _floor_to_step(self, value: Decimal, step: Decimal) -> Decimal:
+        return (value / step).to_integral_value(rounding=ROUND_DOWN) * step
 
-    def quote_to_base_qty(self, quote_u: float, price: float) -> float:
-        raw_qty = Decimal(str(quote_u)) / Decimal(str(price))
-        qty = self._quantize_qty(raw_qty)
-        if qty <= 0:
-            raise RuntimeError("Order quantity is zero after LOT_SIZE quantization")
-        return float(qty)
+    def prepare_limit_buy(self, price: float, quote_u: float) -> FilterCheckResult:
+        price_d = self._floor_to_step(Decimal(str(price)), self._tick_size)
+        raw_qty = Decimal(str(quote_u)) / price_d
+        qty_d = self._floor_to_step(raw_qty, self._step_size)
+        if qty_d < self._min_qty:
+            return FilterCheckResult(qty=0.0, price=float(price_d), error="FILTER_FAIL_LOT_SIZE")
+        if (qty_d * price_d) < self._min_notional:
+            return FilterCheckResult(qty=float(qty_d), price=float(price_d), error="FILTER_FAIL_MIN_NOTIONAL")
+        return FilterCheckResult(qty=float(qty_d), price=float(price_d))
 
-    def place_limit_buy(self, price: float, quote_u: float) -> dict[str, Any]:
-        qty = self.quote_to_base_qty(quote_u, price)
+    def place_limit_buy_prepared(self, prepared: FilterCheckResult) -> dict[str, Any]:
         return self._client.create_order(
             symbol=self._symbol,
             side=Client.SIDE_BUY,
             type=Client.ORDER_TYPE_LIMIT,
             timeInForce=Client.TIME_IN_FORCE_GTC,
-            quantity=f"{qty:.8f}",
-            price=f"{price:.2f}",
+            quantity=f"{prepared.qty:.8f}",
+            price=f"{prepared.price:.2f}",
         )
 
     def get_order(self, order_id: int) -> dict[str, Any]:
         return self._client.get_order(symbol=self._symbol, orderId=order_id)
 
+    def cancel_order(self, order_id: int) -> dict[str, Any]:
+        return self._client.cancel_order(symbol=self._symbol, orderId=order_id)
+
     def market_sell(self, qty: float) -> dict[str, Any]:
-        qty_q = self._quantize_qty(Decimal(str(qty)))
+        qty_q = self._floor_to_step(Decimal(str(qty)), self._step_size)
         if qty_q <= 0:
             raise RuntimeError("Sell quantity is zero after LOT_SIZE quantization")
         return self._client.create_order(
@@ -59,3 +77,6 @@ class BinanceClient:
             type=Client.ORDER_TYPE_MARKET,
             quantity=f"{float(qty_q):.8f}",
         )
+
+    def get_balances(self) -> dict[str, Any]:
+        return self._client.get_account()
