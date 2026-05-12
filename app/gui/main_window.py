@@ -6,23 +6,34 @@ from PySide6.QtWidgets import QLabel, QMainWindow, QTextEdit, QVBoxLayout, QWidg
 
 from app.core.logger import UiLogger
 from app.core.market_state import MarketSnapshot
+from app.core.shooter_engine import ShooterEngine, ShooterStatus, ShooterView
 from app.core.ws_client import WsClient
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BUS BTCU Spread Shooter v0.1.0")
-        self.resize(620, 520)
+        self.setWindowTitle("BUS BTCU Spread Shooter v0.2.1")
+        self.resize(700, 760)
 
         self._logger = UiLogger()
         self._ws = WsClient()
+        self._shooter = ShooterEngine()
 
         self._status = QLabel("WS STATUS: LOST")
         self._metrics = QLabel("UPDATES/SEC: 0.0 | WS AGE: -")
         self._bid = QLabel("BID\n-")
         self._ask = QLabel("ASK\n-")
         self._spread = QLabel("SPREAD\n- ticks\n- U")
+
+        self._shooter_header = QLabel("SHOOTER")
+        self._shooter_status = QLabel("STATUS\nIDLE")
+        self._shooter_entry = QLabel("ENTRY\n-")
+        self._shooter_live_bid = QLabel("LIVE BID\n-")
+        self._shooter_pnl = QLabel("PNL\n0 ticks")
+        self._shooter_hold = QLabel("HOLD\n0 ms")
+        self._session = QLabel("TRADES: 0 | WINS: 0 | LOSSES: 0 | WINRATE: 0.0% | AVG HOLD: 0.0 ms | AVG PNL: 0.0 ticks")
+
         self._log_panel = QTextEdit()
         self._log_panel.setReadOnly(True)
 
@@ -46,12 +57,20 @@ class MainWindow(QMainWindow):
 
         font_big = QFont("Consolas", 28, QFont.Weight.Bold)
         font_mid = QFont("Consolas", 12, QFont.Weight.Bold)
+        font_small = QFont("Consolas", 11, QFont.Weight.Bold)
 
         self._status.setFont(font_mid)
         self._metrics.setFont(font_mid)
         self._bid.setFont(font_big)
         self._ask.setFont(font_big)
         self._spread.setFont(font_big)
+        self._shooter_header.setFont(font_mid)
+        self._shooter_status.setFont(font_mid)
+        self._shooter_entry.setFont(font_small)
+        self._shooter_live_bid.setFont(font_small)
+        self._shooter_pnl.setFont(font_small)
+        self._shooter_hold.setFont(font_small)
+        self._session.setFont(font_small)
 
         self.setStyleSheet(
             "QMainWindow { background-color: #0f1115; }"
@@ -65,6 +84,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._bid)
         layout.addWidget(self._ask)
         layout.addWidget(self._spread)
+        layout.addSpacing(16)
+        layout.addWidget(self._shooter_header)
+        layout.addWidget(self._shooter_status)
+        layout.addWidget(self._shooter_entry)
+        layout.addWidget(self._shooter_live_bid)
+        layout.addWidget(self._shooter_pnl)
+        layout.addWidget(self._shooter_hold)
+        layout.addWidget(self._session)
         layout.addSpacing(16)
         layout.addWidget(self._log_panel)
 
@@ -80,12 +107,35 @@ class MainWindow(QMainWindow):
     def _on_market(self, snapshot: MarketSnapshot) -> None:
         self._bid.setText(f"BID\n{snapshot.bid:.2f}")
         self._ask.setText(f"ASK\n{snapshot.ask:.2f}")
-        self._spread.setText(
-            f"SPREAD\n{snapshot.spread_ticks:.0f} ticks\n{snapshot.spread_u:.2f} U"
-        )
+        self._spread.setText(f"SPREAD\n{snapshot.spread_ticks:.0f} ticks\n{snapshot.spread_u:.2f} U")
+        self._spread.setStyleSheet("color: #4de1e8;")
+
+        shooter = self._shooter.on_snapshot(snapshot)
+        self._render_shooter(shooter)
 
     def _on_metrics(self, updates_per_sec: float, ws_age_sec: float) -> None:
         self._metrics.setText(f"UPDATES/SEC: {updates_per_sec:.1f} | WS AGE: {ws_age_sec:.3f}s")
+
+    def _render_shooter(self, view: ShooterView) -> None:
+        self._shooter_status.setText(f"STATUS\n{view.status.value}")
+        self._shooter_entry.setText(f"ENTRY\n{view.entry_price:.2f}" if view.entry_price is not None else "ENTRY\n-")
+        self._shooter_live_bid.setText(f"LIVE BID\n{view.live_bid:.2f}" if view.live_bid is not None else "LIVE BID\n-")
+        self._shooter_pnl.setText(f"PNL\n{view.pnl_ticks:+.1f} ticks")
+        self._shooter_hold.setText(f"HOLD\n{view.hold_ms} ms")
+        self._session.setText(
+            f"TRADES: {view.trades} | WINS: {view.wins} | LOSSES: {view.losses} | "
+            f"WINRATE: {view.winrate:.1f}% | AVG HOLD: {view.avg_hold_ms:.1f} ms | AVG PNL: {view.avg_pnl_ticks:+.1f} ticks"
+        )
+
+        color = "#d7dbdf"
+        if view.status == ShooterStatus.TRACKING:
+            color = "#f5d742"
+        elif view.status == ShooterStatus.WIN:
+            color = "#4cef72"
+        elif view.status == ShooterStatus.LOSS:
+            color = "#ff5f6d"
+        self._shooter_status.setStyleSheet(f"color: {color};")
+        self._shooter_pnl.setStyleSheet(f"color: {color};")
 
     def _render_log(self) -> None:
         self._log_panel.setPlainText("\n".join(self._logger.lines()))
